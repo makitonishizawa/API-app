@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bing Maps - Reverse Geocoding</title>
+    
+</head>
+<body>
+
+    <div>
+        <div id="title">
+            行った場所記録アプリ
+        </div>
+    </div>    
+
+    <input type="text" id="searchBox" placeholder="場所を検索" />
+    <br>
+    <label for="yearSelect">行った年:</label>
+    <select id="yearSelect"></select>
+    <br>
+    <input type="file" id="photoUpload" style="display: none;">
+
+    地図をクリックすると記録に追加
+    <div id="myMap" style="position:relative;width:800px;height:600px;"></div>
+
+    記録
+    <div id="output"></div>
+
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script>
+        var record = {};
+        //行った年を入れるドロップボックスを作成
+        $(document).ready(function() {
+            var $yearSelect = $('#yearSelect');
+            var currentYear = new Date().getFullYear(); // 現在の年を取得
+            var startYear = 1900; // 開始年
+
+            for (var year = currentYear; year >= startYear; year--) {
+                $yearSelect.append($('<option>', {
+                    value: year,
+                    text: year
+                }));
+            }
+        });
+
+            // firebaseにpush=送る準備をするdbRefはキーの情報
+
+            window.updateFirebase = function () {
+                const app = window.firebaseApp;
+                const db = window.firebaseDatabase;
+                const dbRef = window.firebaseDBRef;
+                const newPostRef = push(dbRef);
+                set(newPostRef, record);
+                }
+
+    </script>
+   
+
+
+
+   
+    <script type="module">  //Firebaseのためのブロック
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-app.js";
+        import { getDatabase, ref, push, set, update, onChildAdded, remove, onChildRemoved, onChildChanged } //ここで使うFirebase関数を全て呼び出す必要あり
+            from "https://www.gstatic.com/firebasejs/9.1.0/firebase-database.js";
+        
+            // Firebase Storage SDKを追加
+        import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject} 
+            from "https://www.gstatic.com/firebasejs/9.1.0/firebase-storage.js";
+        
+        
+            // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA9AH6RWkm6bbrNbsWUOiTh7dxHwdQQfmU",
+            authDomain: "map-appli-99047.firebaseapp.com",
+            projectId: "map-appli-99047",
+            storageBucket: "map-appli-99047.appspot.com",
+            messagingSenderId: "529595805552",
+            appId: "1:529595805552:web:278d82aa8035f66a51e9b5"
+            };
+            const app = initializeApp(firebaseConfig);
+            const db = getDatabase(app); //RealtimeDBに接続
+            const dbRef = ref(db, "chat"); //RealtimeDB内の"chat"を使う
+            const storage =getStorage(app); //Firebase storageに接続
+
+             // 既存データの読み込み
+            onChildAdded(dbRef, (data) => {
+                const record = data.val();
+                const key = data.key;
+                const h = '<p id="' + key + '">' + record.year + '<br>' + record.place + '</p>';
+                $("#output").append(h);
+            });
+            
+            
+            // Firebase関数をグローバルスコープに公開
+            window.firebaseDBRef = dbRef;
+            window.push = push;
+            window.set = set;
+            window.updateFirebase = function() {
+                const newPostRef = push(window.firebaseDBRef);
+                set(newPostRef, window.record);
+            }  
+
+            window.onChildAdded = onChildAdded
+
+        
+
+            // 写真アップロード関数
+            window.uploadPhoto = function(file) {
+                    const storageReference = storageRef(storage, 'photos/' + file.name);
+                    const uploadTask = uploadBytesResumable(storageReference, file);
+
+                    uploadTask.on('state_changed', 
+                        (snapshot) => {},
+                        (error) => { alert('Upload failed: ' + error.message); },
+                        () => { alert('Photo uploaded'); }
+                    );
+                }
+
+                document.getElementById('photoUpload').addEventListener('change', function(event) {
+                    uploadPhoto(event.target.files[0]);
+                });
+
+        </script>
+
+
+        <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol?callback=loadMapScenario' async defer></script>
+        <script type="text/javascript">
+        let map;
+        let searchManager;
+
+        function loadMapScenario() {　　　//クリックした場所の情報を取得
+            map = new Microsoft.Maps.Map('#myMap', {
+                credentials: 'ArtwIgV95PmAbnXTqNSmODtqB4e8nbxxelgGc_pd-NNQVloEFqwkUgR3unrWdcd9',
+                center: new Microsoft.Maps.Location(35.6895, 139.6917),
+                zoom: 10,
+                culture: 'ja-JP'
+            });
+
+            // 検索ボックスで近いものを提案
+            Microsoft.Maps.loadModule('Microsoft.Maps.Search', function() {
+                searchManager = new Microsoft.Maps.Search.SearchManager(map);
+                document.getElementById('searchBox').onchange = performSearch;
+            });
+
+
+            // イベントリスナーを追加
+            Microsoft.Maps.Events.addHandler(map, 'click', function (e) {
+                reverseGeocode(e.location);
+            });
+
+            // SearchManagerのインスタンスを作成
+            Microsoft.Maps.loadModule('Microsoft.Maps.Search', function () {
+                searchManager = new Microsoft.Maps.Search.SearchManager(map);
+            });
+        
+            //クリックした箇所にピン止めする
+            onChildAdded(window.firebaseDBRef, function(snapshot) {
+                const data = snapshot.val();
+                const location = data.latlog;
+                const pin = new Microsoft.Maps.Pushpin(new Microsoft.Maps.Location(location.lat, location.log), {
+                    title: data.place
+                });
+                map.entities.push(pin);
+            });
+    
+            // 写真アップ
+            Microsoft.Maps.Events.addHandler(map, 'click', function (e) {
+                const pin = new Microsoft.Maps.Pushpin(e.location, { text: '!' });
+                map.entities.push(pin);
+
+                Microsoft.Maps.Events.addHandler(pin, 'click', function () {
+                    document.getElementById('photoUpload').click();
+                });
+            });
+
+            document.getElementById('photoUpload').addEventListener('change', function (event) {
+                uploadPhoto(event.target.files[0]);
+            });
+
+
+        }
+
+        //検索ボックス
+        function performSearch() {
+            var query = document.getElementById('searchBox').value;
+            var searchRequest = {
+                where: query,
+                callback: function(r) {
+                    if (r && r.results && r.results.length > 0) {
+                        map.entities.clear();
+                        var firstResult = r.results[0];
+                        var pin = new Microsoft.Maps.Pushpin(firstResult.location);
+                        map.entities.push(pin);
+                        map.setView({ center: firstResult.location, zoom: 10 });
+                    } else {
+                        alert('No results found.');
+                    }
+                },
+                errorCallback: function(e) {
+                    alert('Error occurred in search: ' + e.message);
+                }
+            };
+            searchManager.geocode(searchRequest);
+        }
+
+        function reverseGeocode(location) {    //都市名等を取得
+            const reverseGeocodeRequestOptions = {
+                location: location,
+                callback: function (results) {
+                    if (results && results.name) {
+                        // alert('Clicked location: ' + results.name);
+                    //情報を記録
+                        window.record = {
+                            year: $("#yearSelect").val(),
+                            place: results.name,
+                            latlog: {
+                                lat: location.latitude,
+                                log: location.longitude
+                            },
+                        }
+                        console.log(window.record)
+
+                        window.currentLocation = location
+
+                        updateFirebase(); // Firebaseを更新
+                    
+
+                    //最初にデータ取得＆onSnapshotでリアルタイムにデータを取得
+                    // onChildAddedはJ scriptではなくfirebaseの関数
+                        onChildAdded(window.firebaseDBRef, function(data){
+                            const record = data.val();
+                            const key = data.key; //削除・更新に必須
+
+                            let h = '<p id="'+key+'">';
+                                h += record.year;
+                                // h += '　';
+                                h += record.place
+
+                        // #outputの最後に追加
+                            $("#output").show(h);
+                            console.log(h)
+
+                        })
+                    //エラーだったら
+                    } else {
+                        alert('No city information found.');
+                    }
+                },
+                errorCallback: function (e) {
+                    alert('Error: ' + e.message);
+                }
+            };
+
+            searchManager.reverseGeocode(reverseGeocodeRequestOptions);
+
+        }
+
+    </script>
+
+
+</body>
+</html>
